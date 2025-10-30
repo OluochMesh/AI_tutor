@@ -20,11 +20,13 @@ def create_app(config_class=Config):
     from app.routes.auth import auth_bp
     from app.routes.tutor import tutor_bp
     from app.routes.analytics import analytics_bp
+    from app.routes.subscription import subscription_bp 
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(tutor_bp, url_prefix='/api/tutor')
     app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
-    
+    app.register_blueprint(subscription_bp, url_prefix='/api/subscription')
+        
     @app.route('/api/health')
     def health_check():
         try:

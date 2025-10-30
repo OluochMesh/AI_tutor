@@ -4,11 +4,13 @@ from app.extension import db
 from app.models import User, Response, Progress
 from datetime import datetime, timedelta, date
 from sqlalchemy import func, extract
+from app.utils.decorators import premium_required
 
 analytics_bp = Blueprint('analytics',__name__)
 
 @analytics_bp.route('/timeline', methods=['GET'], endpoint='get_timeline')
 @jwt_required()
+@premium_required
 def get_timeline_data():
     """
     Get timeline data for score over time graph
@@ -161,6 +163,7 @@ def get_learning_streak():
     
 @analytics_bp.route('/weekly-summary', methods=['GET'], endpoint='get_weekly_summary')
 @jwt_required()
+@premium_required
 def get_weekly_summary():
     """
     Get summary of last 7 days
@@ -220,6 +223,7 @@ def get_weekly_summary():
     
 @analytics_bp.route('/heatmap', methods=['GET'], endpoint='get_activity_heatmap')
 @jwt_required()
+@premium_required
 def get_activity_heatmap():
     """
     Get activity heatmap data (sessions per day over time)
