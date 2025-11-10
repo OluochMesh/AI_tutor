@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}Learn with AI Tutor{% endblock %}
+{% block content %}
+<div class="container-narrow">
+  <h2 class="page-title">AI Tutor - Learn a Concept</h2>
+
+  <!-- Input Form -->
+  <form id="learnForm" class="card p-4 shadow-sm">
+    <div class="form-group mb-3">
+      <label for="concept" class="form-label">Concept <span class="text-danger">*</span></label>
+      <input type="text" class="form-control" id="concept" placeholder="e.g. Photosynthesis" required minlength="2" maxlength="255">
+      <small class="form-text text-muted">Enter the topic or concept you want to explain (e.g., Photosynthesis, Gravity, etc.)</small>
+    </div>
+
+    <div class="form-group mb-3">
+      <label for="explanation" class="form-label">Your Explanation <span class="text-danger">*</span></label>
+      <textarea class="form-control" id="explanation" rows="5" placeholder="Explain what you understand about this concept..." required minlength="10" maxlength="5000"></textarea>
+      <small class="form-text text-muted">Provide a detailed explanation (minimum 10 characters, maximum 5000 characters)</small>
+      <div class="d-flex justify-content-between mt-1">
+        <span id="charCount" class="text-muted small">0 / 5000 characters</span>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary w-100">Submit for Feedback</button>
+  </form>
+
+  <!-- Feedback Display -->
+  <div id="feedbackSection" class="mt-4" style="display: none;">
+    <div class="content-card" style="border-left: 4px solid #198754;">
+      <h4 class="text-success">AI Feedback</h4>
+      <p id="feedbackText" class="mt-2"></p>
+
+      <div class="mt-3">
+        <strong>Understanding Score:</strong> <span id="score" class="badge bg-info text-dark"></span>
+      </div>
+
+      <div id="strengthsSection" class="mt-3"></div>
+      <div id="improvementSection" class="mt-3"></div>
+    </div>
+  </div>
+
+  <!-- Error Message -->
+  <div id="errorMsg" class="alert alert-danger mt-4" style="display: none;"></div>
+
+  <!-- Loading Indicator -->
+  <div id="loadingIndicator" class="text-center mt-4" style="display: none;">
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+    <p class="mt-2">Analyzing your explanation...</p>
+  </div>
+
+<script>
+// Character counter for explanation field
+document.getElementById("explanation").addEventListener("input", function(e) {
+  const count = e.target.value.length;
+  const charCount = document.getElementById("charCount");
+  charCount.textContent = count + " / 5000 characters";
+  
+  if (count > 5000) {
+    charCount.classList.remove("text-muted");
+    charCount.classList.add("text-danger");
+  } else if (count > 4500) {
+    charCount.classList.remove("text-muted", "text-danger");
+    charCount.classList.add("text-warning");
+  } else {
+    charCount.classList.remove("text-warning", "text-danger");
+    charCount.classList.add("text-muted");
+  }
+});
+
+// Real-time validation feedback
+document.getElementById("concept").addEventListener("blur", function(e) {
+  if (e.target.value.trim().length > 0 && e.target.value.trim().length < 2) {
+    e.target.classList.add("is-invalid");
+  } else {
+    e.target.classList.remove("is-invalid");
+  }
+});
+
+document.getElementById("explanation").addEventListener("blur", function(e) {
+  const length = e.target.value.trim().length;
+  if (length > 0 && length < 10) {
+    e.target.classList.add("is-invalid");
+  } else {
+    e.target.classList.remove("is-invalid");
+  }
+});
+</script>
+</div>
+
+<script>
+document.getElementById("learnForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  // Get form elements
+  const conceptInput = document.getElementById("concept");
+  const explanationInput = document.getElementById("explanation");
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  const errorMsg = document.getElementById("errorMsg");
+  const feedbackSection = document.getElementById("feedbackSection");
+
+  // Get and trim values
+  const concept = conceptInput.value.trim();
+  const explanation = explanationInput.value.trim();
+  const token = localStorage.getItem("access_token");
+
+  // Clear previous errors
+  errorMsg.style.display = "none";
+  feedbackSection.style.display = "none";
+  
+  // Remove any previous error styling
+  conceptInput.classList.remove("is-invalid");
+  explanationInput.classList.remove("is-invalid");
+
+  // Validate authentication
+  if (!token) {
+    errorMsg.textContent = "You must be logged in to use the AI Tutor.";
+    errorMsg.style.display = "block";
+    setTimeout(() => {
+      window.location.href = "/login";
+    }, 2000);
+    return;
+  }
+
+  // Frontend validation
+  let hasErrors = false;
+
+  // Validate concept
+  if (!concept) {
+    errorMsg.textContent = "Please enter a concept (e.g., Photosynthesis).";
+    errorMsg.style.display = "block";
+    conceptInput.classList.add("is-invalid");
+    hasErrors = true;
+  } else if (concept.length < 2) {
+    errorMsg.textContent = "Concept must be at least 2 characters long.";
+    errorMsg.style.display = "block";
+    conceptInput.classList.add("is-invalid");
+    hasErrors = true;
+  }
+
+  // Validate explanation
+  if (!explanation) {
+    errorMsg.textContent = "Please provide your explanation.";
+    errorMsg.style.display = "block";
+    explanationInput.classList.add("is-invalid");
+    hasErrors = true;
+  } else if (explanation.length < 10) {
+    errorMsg.textContent = "Explanation too short. Please provide at least 10 characters with more detail.";
+    errorMsg.style.display = "block";
+    explanationInput.classList.add("is-invalid");
+    hasErrors = true;
+  } else if (explanation.length > 5000) {
+    errorMsg.textContent = "Explanation too long. Maximum 5000 characters allowed.";
+    errorMsg.style.display = "block";
+    explanationInput.classList.add("is-invalid");
+    hasErrors = true;
+  }
+
+  if (hasErrors) {
+    return;
+  }
+
+  // Disable submit button and show loading state
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Analyzing...";
+  errorMsg.style.display = "none";
+
+  try {
+    const res = await fetch("/api/tutor/explain", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+      },
+      body: JSON.stringify({ 
+        concept: concept,
+        explanation: explanation  // Send as 'explanation' (backend accepts both)
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      // Handle different error types
+      let errorMessage = data.error || "Failed to analyze explanation.";
+      
+      // Add field-specific error styling
+      if (data.field === 'concept') {
+        conceptInput.classList.add("is-invalid");
+      } else if (data.field === 'explanation') {
+        explanationInput.classList.add("is-invalid");
+      }
+
+      // Show user-friendly error message
+      if (res.status === 429) {
+        errorMessage = "Daily limit reached. Upgrade to Premium for unlimited access.";
+      } else if (res.status === 401 || res.status === 403) {
+        errorMessage = "Session expired. Please log in again.";
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 2000);
+      } else if (res.status === 400) {
+        // Use the specific error message from backend
+        errorMessage = data.error || errorMessage;
+        if (data.details) {
+          errorMessage += ` (${data.details})`;
+        }
+      } else if (res.status === 500 || res.status === 503) {
+        // Server errors - show details if available
+        errorMessage = data.error || errorMessage;
+        if (data.details) {
+          console.error("Server error details:", data.details);
+          // Show user-friendly message but log details
+          errorMessage = data.error || "Server error occurred. Please try again later.";
+        }
+        if (data.trace && window.location.hostname === 'localhost') {
+          console.error("Full error trace:", data.trace);
+        }
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    // Success - display feedback
+    feedbackSection.style.display = "block";
+    errorMsg.style.display = "none";
+    
+    // Display feedback text
+    document.getElementById("feedbackText").textContent = data.feedback || "No feedback available.";
+    
+    // Display score
+    const scoreValue = typeof data.understanding_score === "number" 
+      ? data.understanding_score * 100 
+      : 0;
+    document.getElementById("score").textContent = scoreValue.toFixed(1) + "%";
+
+    // Display strengths
+    const strengthsSection = document.getElementById("strengthsSection");
+    if (data.strengths && Array.isArray(data.strengths) && data.strengths.length > 0) {
+      strengthsSection.innerHTML = "<h5 class='text-success'>✅ Strengths</h5><ul class='list-group'>" + 
+        data.strengths.map(s => `<li class='list-group-item'>${s}</li>`).join("") + 
+        "</ul>";
+    } else {
+      strengthsSection.innerHTML = "";
+    }
+
+    // Display areas to improve
+    const improvementSection = document.getElementById("improvementSection");
+    if (data.areas_to_improve && Array.isArray(data.areas_to_improve) && data.areas_to_improve.length > 0) {
+      improvementSection.innerHTML = "<h5 class='text-warning'>💡 Areas to Improve</h5><ul class='list-group'>" + 
+        data.areas_to_improve.map(a => `<li class='list-group-item'>${a}</li>`).join("") + 
+        "</ul>";
+    } else {
+      improvementSection.innerHTML = "";
+    }
+
+    // Show remaining requests if provided
+    if (data.remaining_requests !== undefined && data.remaining_requests !== null) {
+      const remainingText = document.createElement("div");
+      remainingText.className = "alert alert-info mt-3";
+      remainingText.textContent = `Remaining free requests today: ${data.remaining_requests}`;
+      improvementSection.appendChild(remainingText);
+    }
+
+    // Reset form after successful submission
+    e.target.reset();
+
+  } catch (err) {
+    // Display error message
+    errorMsg.textContent = err.message || "An error occurred. Please try again.";
+    errorMsg.style.display = "block";
+    feedbackSection.style.display = "none";
+    
+    // Log error for debugging (only in development)
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      console.error("Error:", err);
+    }
+  } finally {
+    // Re-enable submit button
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit for Feedback";
+  }
+});
+</script>
+{% endblock %}
+

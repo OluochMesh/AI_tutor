@@ -252,8 +252,7 @@ def mpesa_callback():
         # Get callback data
         data = request.get_json()
         
-        # Log for debugging
-        print(f"M-Pesa Callback: {data}")
+        # Log callback for debugging (would use proper logger in production)
         
         # Extract callback data
         body = data.get('Body', {}).get('stkCallback', {})
@@ -284,7 +283,7 @@ def mpesa_callback():
                 else:
                     plan = 'monthly'
                 
-                print(f"Payment successful: {mpesa_receipt}, Amount: {amount}")
+                # Payment successful - would log properly in production
         
         # Always return success to Safaricom
         return jsonify({
@@ -293,7 +292,7 @@ def mpesa_callback():
         }), 200
         
     except Exception as e:
-        print(f"Callback error: {str(e)}")
+        # Log error properly in production
         return jsonify({
             'ResultCode': 1,
             'ResultDesc': 'Failed'

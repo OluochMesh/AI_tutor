@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Data Export{% endblock %}
+{% block content %}
+<div class="container-narrow">
+  <h2 class="page-title">Export Your Learning Data</h2>
+  <p class="page-subtitle">
+    Premium feature — download your learning progress, history, or a full report as CSV files.
+  </p>
+
+  <!-- Authentication Check -->
+  <div id="authWarning" class="alert alert-warning" style="display: none;">
+    <strong>Please log in</strong> to export your data. <a href="/login">Login here</a>
+  </div>
+
+  <!-- Premium Feature Warning -->
+  <div id="premiumWarning" class="alert alert-info" style="display: none;">
+    <strong>Premium Feature:</strong> This feature requires a premium subscription. 
+    <a href="/subscription">Upgrade now</a> to access data exports.
+  </div>
+
+  <div class="content-card" style="display: flex; flex-direction: column; gap: 0.75rem;">
+    <button class="btn-secondary" onclick="exportCSV('history')">
+      📘 Export Learning History
+    </button>
+
+    <button class="btn" onclick="exportCSV('progress')">
+      📊 Export Progress Report
+    </button>
+
+    <button class="btn" onclick="exportCSV('full-report')">
+      🧠 Export Full AI Tutor Report
+    </button>
+  </div>
+
+  <div id="exportStatus" class="mt-4 text-center"></div>
+</div>
+
+<script>
+// Check authentication on page load
+const token = localStorage.getItem("access_token");
+if (!token) {
+  document.getElementById("authWarning").style.display = "block";
+  setTimeout(() => window.location.href = "/login", 2000);
+}
+
+async function exportCSV(type) {
+  const token = localStorage.getItem("access_token");
+  if (!token) {
+    document.getElementById("authWarning").style.display = "block";
+    return;
+  }
+
+  const endpoints = {
+    history: "/api/export/history-csv",
+    progress: "/api/export/progress-csv",
+    "full-report": "/api/export/full-report-csv"
+  };
+
+  const statusEl = document.getElementById("exportStatus");
+  statusEl.textContent = "Preparing your CSV... ⏳";
+
+  try {
+    const res = await fetch(endpoints[type], {
+      method: "GET",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Accept": "text/csv"
+      }
+      // If your backend uses cookies/session instead of Bearer tokens, add: , credentials: "include"
+    });
+
+    // Handle auth problems explicitly
+    if (res.status === 401) {
+      // token invalid or expired
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      statusEl.innerHTML = `<span class='text-danger'>❌ Not authorized. Redirecting to login...</span>`;
+      setTimeout(() => window.location.href = "/login", 900);
+      return;
+    }
+
+    // Handle premium required (403)
+    if (res.status === 403) {
+      const errorData = await res.json().catch(() => ({}));
+      if (errorData.error && errorData.error.includes('Premium')) {
+        document.getElementById("premiumWarning").style.display = "block";
+        statusEl.innerHTML = `<span class='text-warning'>⚠️ ${errorData.message || 'Premium subscription required'}. <a href="/subscription">Upgrade here</a></span>`;
+      } else {
+        statusEl.innerHTML = `<span class='text-danger'>❌ Access denied: ${errorData.error || 'Not authorized'}</span>`;
+      }
+      return;
+    }
+
+    // If backend returns JSON error payload, parse and show it
+    const contentType = res.headers.get('content-type') || '';
+    if (!res.ok) {
+      if (contentType.includes('application/json')) {
+        const err = await res.json();
+        throw new Error(err.error || JSON.stringify(err));
+      } else {
+        const text = await res.text();
+        throw new Error(text || 'Export failed.');
+      }
+    }
+
+    // Expect CSV blob; if server returns JSON success message, handle that too
+    if (contentType.includes('text/csv') || contentType.includes('application/csv') || contentType.includes('application/octet-stream')) {
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ai_tutor_${type}_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      statusEl.innerHTML = "✅ File downloaded successfully!";
+    } else if (contentType.includes('application/json')) {
+      // server returned JSON (maybe with a link or message)
+      const payload = await res.json();
+      if (payload.url) {
+        // server provided a pre-signed URL to download
+        const a = document.createElement("a");
+        a.href = payload.url;
+        a.download = payload.filename || `ai_tutor_${type}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        statusEl.innerHTML = "✅ File downloaded successfully!";
+      } else {
+        statusEl.innerHTML = `<span class='text-warning'>⚠️ Export succeeded but no CSV returned.</span>`;
+      }
+    } else {
+      // unknown content type — attempt to download as blob anyway
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ai_tutor_${type}_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      statusEl.innerHTML = "✅ File downloaded successfully!";
+    }
+
+  } catch (err) {
+    statusEl.innerHTML = `<span class='text-danger'>❌ ${err.message}</span>`;
+  }
+}
+</script>
+{% endblock %}

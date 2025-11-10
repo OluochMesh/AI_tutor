@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-narrow">
+  <div class="page-title"><h2>Welcome, <span id="username">Loading...</span> 👋</h2></div>
+  <p class="page-subtitle">Your current plan: <span id="plan-badge" class="badge">Loading...</span></p>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <h3>Today’s Learning Attempts</h3>
+      <p id="learningAttempts">--</p>
+    </div>
+    <div class="stat-card">
+      <h3>Understanding Score Avg</h3>
+      <p id="avgScore">--%</p>
+    </div>
+    <div class="stat-card">
+      <h3>Remaining Free Requests</h3>
+      <p id="remainingRequests">--</p>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button onclick="window.location.href='/learn'" class="btn">Start Learning</button>
+    <button onclick="window.location.href='/subscription'" class="btn-secondary">Upgrade Plan</button>
+    <button onclick="logout()" class="btn-danger">Logout</button>
+  </div>
+
+  <div class="recent-feedback content-card">
+    <h3>Recent AI Feedback</h3>
+    <div id="feedback-list" class="feedback-list">
+      <p>Loading recent responses...</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// Check authentication
+const token = localStorage.getItem("access_token");
+if (!token) {
+  window.location.href = "/login";
+}
+
+// Fetch user profile and dashboard data
+async function fetchUser() {
+  try {
+    // Get user profile
+    const resUser = await fetch("/api/auth/me", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const dataUser = await resUser.json();
+
+    if (!resUser.ok) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      window.location.href = "/login";
+      return;
+    }
+
+    // Display user info with safe fallbacks
+    const userObj = dataUser.user || {};
+    const displayName = userObj.name || userObj.email || "User";
+    document.getElementById("username").textContent = displayName;
+    const plan = userObj.subscription_status || "free";
+    document.getElementById("plan-badge").textContent = plan.charAt(0).toUpperCase() + plan.slice(1);
+
+    // Fetch stats from tutor/stats endpoint
+    try {
+      const resStats = await fetch("/api/tutor/stats", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const dataStats = await resStats.json();
+      if (resStats.ok && dataStats) {
+        document.getElementById("learningAttempts").textContent = dataStats.today_responses ?? (dataStats.total_responses ?? "--");
+        const avg = typeof dataStats.average_understanding === "number" ? Math.round(dataStats.average_understanding * 100) : (dataStats.average_understanding ?? "--");
+        document.getElementById("avgScore").textContent = (avg === "--") ? "--%" : `${avg}%`;
+
+        // Remaining requests: use provided value if present, otherwise infer from plan
+        if (dataStats.remaining_requests !== undefined) {
+          document.getElementById("remainingRequests").textContent = dataStats.remaining_requests;
+        } else {
+          document.getElementById("remainingRequests").textContent = (plan === "free") ? "2 / 5" : "Unlimited";
+        }
+      } else {
+        // fallback values if stats call fails
+        document.getElementById("learningAttempts").textContent = "0";
+        document.getElementById("avgScore").textContent = "--%";
+        document.getElementById("remainingRequests").textContent = plan === "free" ? "2 / 5" : "Unlimited";
+      }
+    } catch (err) {
+      // stats fetch failed; use fallbacks
+      document.getElementById("learningAttempts").textContent = "0";
+      document.getElementById("avgScore").textContent = "--%";
+      document.getElementById("remainingRequests").textContent = plan === "free" ? "2 / 5" : "Unlimited";
+    }
+
+    // Fetch recent feedback history
+    try {
+      const resHistory = await fetch("/api/tutor/history", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const dataHistory = await resHistory.json();
+      const feedbackList = document.getElementById("feedback-list");
+
+      if (resHistory.ok && dataHistory.history && Array.isArray(dataHistory.history) && dataHistory.history.length) {
+        feedbackList.innerHTML = dataHistory.history.slice(0,5).map(item => {
+          const concept = item.concept || "Unknown";
+          const score = (typeof item.understanding_score === "number") ? `${Math.round(item.understanding_score * 100)}%` : "--%";
+          const feedback = item.feedback || item.response_text || "";
+          return `
+            <div class="feedback-card">
+              <p><strong>Concept:</strong> ${concept}</p>
+              <p><strong>Score:</strong> ${score}</p>
+              <p><em>"${feedback}"</em></p>
+            </div>
+          `;
+        }).join("");
+      } else {
+        // keep a helpful message when no history
+        feedbackList.innerHTML = `<p>No recent responses yet. Try the AI Tutor to generate feedback.</p>`;
+      }
+    } catch (err) {
+      const feedbackList = document.getElementById("feedback-list");
+      feedbackList.innerHTML = `<p>Unable to load recent responses.</p>`;
+    }
+
+  } catch (err) {
+    console.error("Error fetching user:", err);
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    window.location.href = "/login";
+  }
+}
+
+// Logout
+function logout() {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("refresh_token");
+  window.location.href = "/login";
+}
+
+fetchUser();
+</script>
+{% endblock %}
+
+

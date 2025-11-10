@@ -88,7 +88,7 @@ Evaluate it as follows:
                 return self._create_fallback_response(concept, learner_input)
 
         except Exception as e:
-            print(f"AI Service Error: {str(e)}")
+            # Log error properly in production
             return self._create_fallback_response(concept, learner_input)
 
     def _parse_ai_response(self, text):
@@ -217,7 +217,7 @@ Keep each tip under 20 words.
                 return self._fallback_study_tips(weak_topics)
 
         except Exception as e:
-            print(f"Study tips error: {str(e)}")
+            # Log error properly in production
             return self._fallback_study_tips(weak_topics)
 
     def _fallback_study_tips(self, weak_topics):

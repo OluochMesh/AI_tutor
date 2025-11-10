@@ -1,0 +1,439 @@
+/* =========================
+   Global Theme
+========================= */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Color palette */
+  --primary-color: #007BFF;
+  --secondary-color: #EAF2FF;
+  --text-color-dark: #212529;
+  --text-color-light: #555;
+  --white-color: #FFFFFF;
+  --border-color: #DEE2E6;
+
+  /* Legacy aliases (keep for compatibility) */
+  --primary: var(--primary-color);
+  --primary-light: #339cff;
+  --dark: var(--text-color-dark);
+  --gray: #f5f5f5;
+  --text: var(--text-color-dark);
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+  font-family: "Poppins", sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--white-color);
+  color: var(--text-color-dark);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* =========================
+   Page Utilities
+========================= */
+.page-title {
+  text-align: center;
+  margin: 1rem 0 1.25rem;
+}
+
+.page-subtitle {
+  text-align: center;
+  color: var(--text-color-light);
+  margin: -0.5rem 0 1.5rem;
+}
+
+.container-narrow {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.content-card {
+  background: var(--white-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.04);
+}
+
+.btn-danger {
+  background: #dc3545;
+  color: var(--white-color);
+}
+.btn-danger:hover {
+  background: #bb2d3b;
+}
+
+/* Form validation helper used in learn page */
+.is-invalid {
+  border-color: #dc3545 !important;
+}
+.is-invalid:focus {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+/* =========================
+   Navbar
+========================= */
+.navbar {
+  background: var(--white-color);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  padding: 0.8rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Center the nav content and constrain width */
+body > .navbar {
+  justify-content: center;
+}
+
+.navbar .brand,
+.navbar .logo {
+  font-weight: 700;
+  color: var(--primary-color);
+  font-size: 1.2rem;
+}
+
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.nav-list a {
+  margin-left: 0.75rem;
+  text-decoration: none;
+  color: var(--text-color-dark);
+  transition: color 0.2s, background-color 0.2s, border-color 0.2s;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+}
+
+.nav-list a:hover,
+.nav-list a.active {
+  background: var(--secondary-color);
+  color: var(--primary-color);
+}
+
+/* Style Register link as secondary button */
+.nav-list a[href="/register"] {
+  background: var(--white-color);
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+}
+
+/* =========================
+   General Layout
+========================= */
+main {
+  flex: 1;
+  padding: 2rem 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+h1, h2, h3, h4 {
+  color: var(--text-color-dark);
+  margin-bottom: 1rem;
+}
+
+form {
+  background: var(--white-color);
+  padding: 1.5rem;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+form label {
+  display: block;
+  margin-top: 1rem;
+  font-weight: 600;
+}
+
+form input, form textarea, form select {
+  width: 100%;
+  padding: 0.7rem;
+  margin-top: 0.4rem;
+  border-radius: var(--radius);
+  border: 1px solid #ccc;
+  font-size: 1rem;
+}
+
+form input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 3px rgba(0, 123, 255, 0.3);
+}
+
+/* Buttons */
+button, .btn, .btn-secondary {
+  display: inline-block;
+  margin-top: 1.2rem;
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.3s;
+}
+
+/* Primary button */
+button, .btn {
+  background: var(--primary-color);
+  color: var(--white-color);
+}
+
+button:hover, .btn:hover {
+  background: #0069d9;
+}
+
+/* Secondary button */
+.btn-secondary {
+  background: var(--white-color);
+  border: 1px solid var(--border-color);
+  color: var(--primary-color);
+}
+
+.btn-secondary:hover {
+  background: var(--secondary-color);
+  color: var(--primary-color);
+}
+
+/* =========================
+   Cards and Sections
+========================= */
+.stat-card, .feedback-card, .plan-card {
+  background: var(--white-color);
+  padding: 1rem;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  text-align: center;
+}
+
+.stat-card h3, .feedback-card h4, .plan-card h4 {
+  margin-bottom: 0.6rem;
+  color: var(--primary-color);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.feedback-card small {
+  display: block;
+  color: #666;
+  margin-top: 0.4rem;
+}
+
+/* =========================
+   Pages
+========================= */
+/* Hero Section */
+.hero {
+  background: var(--secondary-color);
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  margin-top: 1.5rem;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  align-items: center;
+  gap: 2rem;
+}
+
+.hero h1 {
+  font-size: 2.4rem;
+  line-height: 1.2;
+  color: var(--text-color-dark);
+}
+
+.hero p.subhead {
+  color: var(--text-color-light);
+  margin-top: 0.75rem;
+  font-size: 1.1rem;
+}
+
+.hero .cta {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.hero img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+}
+
+/* Features Section */
+.features {
+  padding: 3rem 0 1.5rem;
+}
+
+.features .features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+
+.feature-card {
+  background: var(--white-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.25rem;
+  text-align: left;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.04);
+}
+
+.feature-card img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  margin-bottom: 0.75rem;
+}
+
+.feature-card h3 {
+  margin-bottom: 0.5rem;
+}
+
+.feature-card p {
+  color: var(--text-color-light);
+}
+
+/* How It Works */
+.how-it-works {
+  background: var(--secondary-color);
+  border-radius: 12px;
+  padding: 2rem;
+  margin: 2rem 0;
+}
+
+.steps {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.step {
+  flex: 1 1 280px;
+  background: var(--white-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.step .num {
+  min-width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  color: var(--white-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.step h4 {
+  margin: 0 0 0.25rem 0;
+}
+
+.step p {
+  color: var(--text-color-light);
+  margin: 0;
+}
+
+/* =========================
+   Utilities
+========================= */
+.badge {
+  background: var(--primary);
+  color: white;
+  border-radius: 20px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+.hidden {
+  display: none;
+}
+
+/* =========================
+   Footer
+========================= */
+.site-footer {
+  background: var(--text-color-dark);
+  color: var(--white-color);
+}
+
+.site-footer a {
+  color: var(--white-color);
+  opacity: 0.85;
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* =========================
+   Responsive
+========================= */
+@media (max-width: 992px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .features .features-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .nav-list a {
+    margin-left: 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  form {
+    padding: 1rem;
+  }
+
+  main {
+    padding: 1rem;
+  }
+
+  .features .features-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-narrow">
+    <h2 class="page-title">Account Settings</h2>
+    <div class="content-card">
+        <form id="passwordForm">
+            <label for="currentPassword">Current Password</label>
+            <input type="password" id="currentPassword" required>
+
+            <label for="newPassword">New Password</label>
+            <input type="password" id="newPassword" required>
+
+            <button type="submit" class="btn">Update Password</button>
+        </form>
+    </div>
+    <p class="page-subtitle">Need help? <a href="/support">Contact support</a></p>
+</div>
+
+<script>
+document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        alert('Please log in to update your password.');
+        window.location.href = '/login';
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/auth/change-password', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            // Use backend-expected field names: old_password and new_password
+            body: JSON.stringify({
+                old_password: document.getElementById('currentPassword').value,
+                new_password: document.getElementById('newPassword').value
+            })
+        });
+
+        // Handle auth errors explicitly
+        if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            alert('Session expired. Please log in again.');
+            window.location.href = '/login';
+            return;
+        }
+
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            alert(data.message || 'Password updated!');
+            // Optionally clear inputs
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+        } else {
+            alert(data.error || data.message || 'Failed to update password.');
+        }
+    } catch (err) {
+        alert('Network error. Please try again.');
+        console.error(err);
+    }
+});
+</script>
+{% endblock %}

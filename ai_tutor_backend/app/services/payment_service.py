@@ -52,7 +52,7 @@ class MpesaService:
             return result.get('access_token')
             
         except Exception as e:
-            print(f"Failed to get access token: {str(e)}")
+            # Log error properly in production
             return None
     
     def generate_password(self):

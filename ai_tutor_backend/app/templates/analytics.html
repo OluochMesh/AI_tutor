@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Learning Analytics{% endblock %}
+{% block content %}
+<div class="container-narrow">
+  <h2 class="page-title">📊 Learning Analytics</h2>
+  
+  <!-- Authentication Check -->
+  <div id="authWarning" class="alert alert-warning" style="display: none;">
+    <strong>Please log in</strong> to view your analytics. <a href="/login">Login here</a>
+  </div>
+
+  <!-- Error Message -->
+  <div id="errorMsg" class="alert alert-danger" style="display: none;"></div>
+
+  <!-- Weekly Summary -->
+  <section class="mb-4 content-card">
+    <h4>Weekly Summary</h4>
+    <div id="weekly-summary">Loading...</div>
+  </section>
+
+  <!-- Learning Streak -->
+  <section class="mb-4 content-card">
+    <h4>Learning Streak</h4>
+    <div id="streak">Loading...</div>
+  </section>
+
+  <!-- Topic Comparison -->
+  <section class="mb-4 content-card">
+    <h4>Topic Comparison</h4>
+    <div id="topic-comparison">Loading...</div>
+  </section>
+
+  <!-- Timeline Graph -->
+  <section class="mb-4 content-card">
+    <h4>Performance Timeline</h4>
+    <canvas id="timelineChart"></canvas>
+    <div id="chart-error" class="text-muted mt-2" style="display: none;">Chart unavailable</div>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Check authentication first
+const token = localStorage.getItem("access_token");
+if (!token) {
+  document.getElementById("authWarning").style.display = "block";
+  setTimeout(() => window.location.href = "/login", 2000);
+}
+
+async function loadAnalytics() {
+  const token = localStorage.getItem("access_token");
+  if (!token) {
+    document.getElementById("authWarning").style.display = "block";
+    return;
+  }
+
+  const headers = { 
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+
+  // Hide error messages
+  document.getElementById('errorMsg').style.display = 'none';
+
+  try {
+    // Weekly summary (premium feature)
+    try {
+      const weeklyRes = await fetch('/api/analytics/weekly-summary', { headers });
+      if (weeklyRes.status === 401) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        window.location.href = "/login";
+        return;
+      }
+      if (weeklyRes.status === 403) {
+        const data = await weeklyRes.json();
+        document.getElementById('weekly-summary').innerHTML = 
+          `<div class="text-warning">${data.message || 'Premium feature'} - <a href="/subscription">Upgrade</a></div>`;
+      } else if (weeklyRes.ok) {
+        const weekly = await weeklyRes.json();
+        const thisWeek = weekly?.this_week || {};
+        const sessions = thisWeek.sessions ?? 'N/A';
+        let avgScore = thisWeek.average_score;
+        if (typeof avgScore === 'number' && avgScore <= 1) avgScore = Math.round(avgScore * 100);
+        avgScore = (typeof avgScore === 'number') ? `${avgScore}%` : (avgScore ?? 'N/A');
+        const trend = weekly?.trend || 'neutral';
+        document.getElementById('weekly-summary').innerHTML =
+          `<strong>This Week:</strong> ${sessions} sessions, Avg Score: ${avgScore} (${trend === 'up' ? '⬆️ Improvement' : trend === 'down' ? '⬇️ Decline' : '→ Stable'})`;
+      } else {
+        throw new Error('Failed to load weekly summary');
+      }
+    } catch (err) {
+      document.getElementById('weekly-summary').innerHTML = 
+        '<div class="text-muted">Unable to load weekly summary.</div>';
+    }
+
+    // Streak (free feature)
+    try {
+      const streakRes = await fetch('/api/analytics/streak', { headers });
+      if (streakRes.ok) {
+        const streak = await streakRes.json();
+        const currentStreak = streak?.current_streak ?? 0;
+        const streakMsg = streak?.message || '';
+        document.getElementById('streak').innerHTML =
+          `🔥 <strong>${currentStreak}</strong> day streak — ${streakMsg}`;
+      } else {
+        throw new Error('Failed to load streak data');
+      }
+    } catch (err) {
+      document.getElementById('streak').innerHTML = 
+        '<div class="text-muted">Unable to load streak data.</div>';
+    }
+
+    // Topic comparison (free feature)
+    try {
+      const topicRes = await fetch('/api/analytics/topic-comparison', { headers });
+      if (topicRes.ok) {
+        const topicData = await topicRes.json();
+        const topics = Array.isArray(topicData?.topics) ? topicData.topics : [];
+        if (topics.length > 0) {
+          let html = '<ul class="list-group">';
+          topics.slice(0, 5).forEach(topic => {
+            html += `<li class="list-group-item">
+              <strong>${topic.topic || 'Unknown'}</strong> - 
+              Score: ${topic.average_score || 0}% 
+              (${topic.total_sessions || 0} sessions)
+            </li>`;
+          });
+          html += '</ul>';
+          document.getElementById('topic-comparison').innerHTML = html;
+        } else {
+          document.getElementById('topic-comparison').innerHTML = 
+            '<div class="text-muted">No topic data available yet.</div>';
+        }
+      } else {
+        throw new Error('Failed to load topic comparison');
+      }
+    } catch (err) {
+      document.getElementById('topic-comparison').innerHTML = 
+        '<div class="text-muted">Unable to load topic comparison.</div>';
+    }
+
+    // Timeline chart (premium feature)
+    try {
+      const timelineRes = await fetch('/api/analytics/timeline?days=30', { headers });
+      if (timelineRes.status === 403) {
+        const data = await timelineRes.json();
+        document.getElementById('chart-error').textContent = 
+          `${data.message || 'Premium feature'} - <a href="/subscription">Upgrade to view timeline</a>`;
+        document.getElementById('chart-error').style.display = 'block';
+        document.getElementById('timelineChart').style.display = 'none';
+      } else if (timelineRes.ok) {
+        const timelineData = await timelineRes.json();
+        const timeline = Array.isArray(timelineData?.timeline_data) ? timelineData.timeline_data : [];
+
+        if (timeline.length === 0) {
+          document.getElementById('chart-error').textContent = 'No timeline data available yet.';
+          document.getElementById('chart-error').style.display = 'block';
+          document.getElementById('timelineChart').style.display = 'none';
+        } else {
+          const labels = timeline.map(d => d.date || '');
+          const scores = timeline.map(d => {
+            let s = d.score ?? 0;
+            if (typeof s === 'number' && s <= 1) s = Math.round(s * 100);
+            return s;
+          });
+
+          // Create or update the chart
+          new Chart(document.getElementById('timelineChart'), {
+            type: 'line',
+            data: {
+              labels,
+              datasets: [{
+                label: 'Understanding Score (%)',
+                data: scores,
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0,123,255,0.05)',
+                tension: 0.3,
+                fill: true
+              }]
+            },
+            options: {
+              responsive: true,
+              scales: { y: { beginAtZero: true, max: 100 } }
+            }
+          });
+        }
+      } else {
+        throw new Error('Failed to load timeline data');
+      }
+    } catch (err) {
+      document.getElementById('chart-error').textContent = 'Unable to load timeline chart.';
+      document.getElementById('chart-error').style.display = 'block';
+      document.getElementById('timelineChart').style.display = 'none';
+    }
+
+  } catch (err) {
+    console.error('Analytics load error:', err);
+    document.getElementById('errorMsg').textContent = 
+      'An error occurred while loading analytics. Please try again later.';
+    document.getElementById('errorMsg').style.display = 'block';
+  }
+}
+
+// Only load if authenticated
+if (token) {
+  loadAnalytics();
+}
+</script>
+{% endblock %}

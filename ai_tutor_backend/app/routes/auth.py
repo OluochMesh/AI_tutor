@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 from app.extension import db
 from app.models import User, Subscription
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
@@ -131,6 +131,7 @@ def login():
         )
         
         return jsonify({
+            'success': True,
             'message': 'Login successful',
             'user': user.to_dict(),
             'access_token': access_token,
@@ -158,6 +159,7 @@ def refresh():
         )
         
         return jsonify({
+            'success': True,
             'access_token': new_access_token
         }), 200
         
@@ -181,6 +183,7 @@ def get_current_user():
             return jsonify({'error': 'User not found'}), 404
         
         return jsonify({
+            'success': True,
             'user': user.to_dict()
         }), 200
         
@@ -223,12 +226,39 @@ def change_password():
         db.session.commit()
         
         return jsonify({
+            'success': True,
             'message': 'Password changed successfully'
         }), 200
         
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': f'Password change failed: {str(e)}'}), 500
+
+
+# New endpoint: set Flask session from a valid access token
+@auth_bp.route('/session', methods=['POST'])
+@jwt_required()
+def set_session():
+    """
+    Set server-side session['user'] based on the provided access token.
+    Frontend should call this immediately after login, including the access token
+    in the Authorization header (Bearer <token>) and with credentials included.
+    """
+    try:
+        current_user_id = get_jwt_identity()
+        user = User.query.get(int(current_user_id))
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        # Store a small user object in session for frontend blueprint checks
+        session['user'] = {
+            'id': user.id,
+            'email': user.email,
+            'name': getattr(user, 'name', None)
+        }
+        return jsonify({'success': True, 'message': 'Session set'}), 200
+    except Exception as e:
+        return jsonify({'error': f'Setting session failed: {str(e)}'}), 500
 
 
 # Test endpoint (can be removed in production)

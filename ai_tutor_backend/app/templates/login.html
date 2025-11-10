@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-narrow">
+  <h2 class="page-title">Login to Your Account</h2>
+  <div class="content-card">
+    <form id="loginForm">
+      <label for="email">Email Address</label>
+      <input type="email" id="email" name="email" placeholder="you@example.com" required>
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" placeholder="••••••••" required>
+
+      <button type="submit" class="btn">Login</button>
+    </form>
+    <p style="margin-top: 0.75rem;">Don't have an account? <a href="{{ url_for('frontend.register') }}">Register here</a></p>
+    <p id="message" class="message"></p>
+  </div>
+</div>
+
+<script>
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
+  const messageEl = document.getElementById("message");
+
+  messageEl.textContent = "Logging in...";
+
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      messageEl.textContent = data.error || "Login failed.";
+      messageEl.style.color = "red";
+    } else {
+      const accessToken = data.access_token;
+      localStorage.setItem("access_token", accessToken);
+      localStorage.setItem("refresh_token", data.refresh_token);
+
+      // Ask the backend to set the Flask session cookie using the access token.
+      // Include credentials so the session cookie is stored by the browser.
+      await fetch("/api/auth/session", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + accessToken,
+          "Content-Type": "application/json"
+        },
+        credentials: "include"
+      });
+
+      messageEl.textContent = "Login successful! Redirecting...";
+      messageEl.style.color = "green";
+      // redirect to dashboard (protected frontend route will now find session['user'])
+      window.location.href = "/dashboard";
+    }
+  } catch (err) {
+    messageEl.textContent = "An error occurred. Please try again.";
+    messageEl.style.color = "red";
+  }
+});
+</script>
+{% endblock %}
+
+
+

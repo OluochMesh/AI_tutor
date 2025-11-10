@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Subscription Plans{% endblock %}
+{% block content %}
+<div class="container-narrow">
+  <h2 class="page-title">Choose Your Plan</h2>
+
+  <div id="plansContainer" class="row justify-content-center"></div>
+
+  <!-- Payment Modal -->
+  <div class="modal fade" id="paymentModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">M-Pesa Payment</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p id="selectedPlanText"></p>
+          <input type="text" id="phoneNumber" class="form-control mb-3" placeholder="Enter M-Pesa phone number" />
+          <button id="payBtn" class="btn btn-success w-100">Pay Now</button>
+          <div id="paymentStatus" class="mt-3 text-center"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const token = localStorage.getItem("access_token");
+  if (!token) {
+    alert("Please login first.");
+    window.location.href = "/login";
+    return;
+  }
+
+  const container = document.getElementById("plansContainer");
+  const statusWrapper = document.createElement('div');
+  statusWrapper.id = 'plansStatus';
+  container.parentNode.insertBefore(statusWrapper, container);
+
+  try {
+    // include Authorization to ensure backend can return user-specific plans / pricing
+    const plansRes = await fetch("/api/subscription/plans", {
+      headers: { "Authorization": "Bearer " + token, "Accept": "application/json" }
+      // If your backend uses cookies/session, add: , credentials: "include"
+    });
+
+    if (plansRes.status === 401 || plansRes.status === 403) {
+      // not authorized -> clear tokens and redirect to login
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      alert("Session expired, please log in again.");
+      window.location.href = "/login";
+      return;
+    }
+
+    if (!plansRes.ok) {
+      const err = await plansRes.json().catch(() => ({}));
+      statusWrapper.innerHTML = `<p class="text-danger">Failed to load plans: ${err.error || plansRes.statusText}</p>`;
+      return;
+    }
+
+    const data = await plansRes.json().catch(() => ({}));
+    const plans = Array.isArray(data.plans) ? data.plans : [];
+
+    if (!plans.length) {
+      statusWrapper.innerHTML = `<p class="text-muted">No subscription plans available right now. Please try again later.</p>`;
+      return;
+    }
+
+    container.innerHTML = plans.map(plan => `
+      <div class="col-md-4 mb-3">
+        <div class="card shadow-sm p-3 h-100 ${plan.popular ? 'border-primary' : ''}">
+          <h4 class="text-center">${plan.name}</h4>
+          <h5 class="text-center text-success">KES ${plan.price_kes}</h5>
+          <ul class="list-group list-group-flush my-3">
+            ${Array.isArray(plan.features) ? plan.features.map(f => `<li class="list-group-item">${f}</li>`).join('') : ''}
+          </ul>
+          ${plan.price_kes > 0 ? `<button class="btn btn-primary w-100" onclick="openPaymentModal('${plan.id}', ${plan.price_kes})">Subscribe</button>` 
+          : `<button class="btn btn-secondary w-100" disabled>Free Plan</button>`}
+        </div>
+      </div>
+    `).join("");
+    statusWrapper.innerHTML = "";
+  } catch (err) {
+    console.error("Error fetching plans:", err);
+    document.getElementById("plansContainer").innerHTML = "";
+    document.getElementById("plansContainer").parentNode.querySelector('#plansStatus').innerHTML =
+      `<p class="text-danger">Unable to load subscription plans. Please try again later.</p>`;
+  }
+});
+
+let selectedPlan = null;
+function openPaymentModal(planId, amount) {
+  selectedPlan = planId;
+  document.getElementById("selectedPlanText").textContent = `You're subscribing to ${planId} plan (KES ${amount})`;
+  document.getElementById("phoneNumber").value = "";
+  document.getElementById("paymentStatus").textContent = "";
+  new bootstrap.Modal(document.getElementById("paymentModal")).show();
+}
+
+document.getElementById("payBtn").addEventListener("click", async () => {
+  const phone = document.getElementById("phoneNumber").value.trim();
+  const token = localStorage.getItem("access_token");
+  const statusEl = document.getElementById("paymentStatus");
+
+  if (!selectedPlan) {
+    statusEl.innerHTML = `<span class="text-danger">Please select a plan first.</span>`;
+    return;
+  }
+  if (!phone || !/^\+?\d{8,15}$/.test(phone)) {
+    statusEl.innerHTML = `<span class="text-danger">Please enter a valid phone number (digits only, include country code if needed).</span>`;
+    return;
+  }
+  if (!token) {
+    alert("Please log in to continue.");
+    window.location.href = "/login";
+    return;
+  }
+
+  statusEl.textContent = "Processing payment... ⏳";
+  const payBtn = document.getElementById("payBtn");
+  payBtn.disabled = true;
+
+  try {
+    const res = await fetch("/api/subscription/initiate-mpesa", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token,
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({ plan: selectedPlan, phone_number: phone })
+      // If your backend uses cookies/session, add: , credentials: "include"
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      statusEl.innerHTML = `<span class="text-danger">Not authorized. Redirecting to login...</span>`;
+      setTimeout(() => window.location.href = "/login", 800);
+      return;
+    }
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) {
+      statusEl.innerHTML = `
+        ✅ ${data.message || 'Payment initiated successfully.'}<br><br>
+        <b>Amount:</b> KES ${data.amount || 'N/A'}<br>
+        <b>Phone:</b> ${data.phone_number || phone}<br><br>
+        Please complete the prompt on your phone.
+      `;
+    } else {
+      statusEl.innerHTML = `<span class="text-danger">❌ ${data.error || data.message || 'Payment failed.'}</span>`;
+    }
+  } catch (err) {
+    console.error("Payment initiation error:", err);
+    statusEl.innerHTML = `<span class="text-danger">❌ Network or server error. Please try again later.</span>`;
+  } finally {
+    payBtn.disabled = false;
+  }
+});
+</script>
+{% endblock %}

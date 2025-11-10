@@ -9,7 +9,7 @@ import io
 
 export_bp = Blueprint('export', __name__)
 
-@export_bp.route('/history-csv', method='GET')
+@export_bp.route('/history-csv', methods=['GET'])
 @jwt_required()
 @premium_required
 
@@ -130,7 +130,7 @@ def export_progress_csv():
                 progress.total_sessions,
                 score_percent,
                 level,
-                progress.last_session_date.strftime('%Y-%m-%d %H:%M:%S'),
+                progress.last_session_at.strftime('%Y-%m-%d %H:%M:%S') if progress.last_session_at else 'N/A',
                 progress.created_at.strftime('%Y-%m-%d %H:%M:%S')
             ])
         
@@ -195,7 +195,7 @@ def export_full_report():
                 progress.topic,
                 progress.total_sessions,
                 round(progress.average_score * 100, 1),
-                progress.last_session_date.strftime('%Y-%m-%d')
+                progress.last_session_at.strftime('%Y-%m-%d') if progress.last_session_at else 'N/A'
             ])
         writer.writerow([])
         

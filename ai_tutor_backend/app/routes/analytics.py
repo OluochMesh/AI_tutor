@@ -17,8 +17,8 @@ def get_timeline_data():
     Query params: ?days=30 (default: 30)
     """
     try:
-        current_user_id= get_jwt_identity()
-        user= User.query.get(current_user_id)
+        current_user_id = get_jwt_identity()
+        user = User.query.get(int(current_user_id))
 
         if not user:
             return jsonify({'error': 'user not found'}), 404
@@ -67,7 +67,7 @@ def get_topic_comparison():
             return jsonify({'error': 'User not found'}), 404
         
         # get topic statistics
-        topics = Progress.query.filter_by(user_id=current_user_id).all()
+        topics = Progress.query.filter_by(user_id=user.id).all()
 
         topic_data=[]
 
@@ -76,7 +76,7 @@ def get_topic_comparison():
                 'topic': topic.topic,
                 'average_score': round(topic.average_score * 100, 1),
                 'total_sessions': topic.total_sessions,
-                'last_practiced': topic.last_session_date.isoformat(),
+                'last_practiced': topic.last_session_at.isoformat() if topic.last_session_at else None,
                 'performance_level': get_performance_level(topic.average_score)
             })
 
@@ -98,7 +98,7 @@ def get_learning_streak():
     Calculate current learning streak (consecutive days)
     """
     try:
-        current_user_id = get_jwt_identity()  # ADD PARENTHESES HERE
+        current_user_id = get_jwt_identity()
         user = User.query.get(int(current_user_id))
 
         if not user:

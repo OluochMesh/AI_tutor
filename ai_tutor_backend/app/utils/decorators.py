@@ -12,16 +12,16 @@ def premium_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         try:
-            current_user_id= get_jwt_identity()
-            user= User.query.get(int(current_user_id))
+            current_user_id = get_jwt_identity()
+            user = User.query.get(int(current_user_id))
 
             if not user:
                 return jsonify({'error': 'User not found'}), 404
             
             #check subscription
-            subscription= Subscription.query.filter_by(user_id=user.id).first()
+            subscription = Subscription.query.filter_by(user_id=user.id).first()
             #check if is premium
-            if not subscription or subscription.plan_type  == 'free':
+            if not subscription or subscription.plan_type == 'free':
                 return jsonify({
                     'error': 'Premium subscription required',
                     'message': 'This feature is only available to premium users',
@@ -51,11 +51,11 @@ def check_feature_access(feature_name):
     Returns: (has_access: bool, message: str)
     """
     try:
-        current_user_id= get_jwt_identity()
-        user= User.query(int(current_user_id))
+        current_user_id = get_jwt_identity()
+        user = User.query.get(int(current_user_id))
         if not user:
             return False, "User not found"
-        subscription= Subscription.query.filter_by(user_id=user.id).first()
+        subscription = Subscription.query.filter_by(user_id=user.id).first()
         if not subscription or subscription.plan_type == 'free':
             return False, f"{feature_name} is a premium feature"
         
