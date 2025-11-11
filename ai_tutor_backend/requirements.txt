@@ -5,7 +5,7 @@ flask-cors==4.0.0
 # Database
 flask-sqlalchemy==3.1.1
 flask-migrate==4.0.5
-psycopg2-binary==2.9.9    # PostgreSQL adapter (for production)
+psycopg2-binary==2.9.9
 
 # Authentication
 flask-jwt-extended==4.6.0
