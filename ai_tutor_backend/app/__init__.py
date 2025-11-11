@@ -1,10 +1,19 @@
+from pathlib import Path
+
 from flask import Flask, jsonify
 from flask_cors import CORS
+
 from .config import Config
 from .extension import db, migrate, jwt
 
+
 def create_app(config_class=Config):
-    app = Flask(__name__)
+    package_root = Path(__file__).resolve().parent
+    app = Flask(
+        __name__,
+        static_folder=str(package_root / "static"),
+        template_folder=str(package_root / "templates"),
+    )
     app.config.from_object(config_class)
 
     # Initialize extensions

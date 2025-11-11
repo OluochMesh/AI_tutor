@@ -1,26 +1,53 @@
 import os
-from dotenv import load_dotenv
 from datetime import timedelta
+from pathlib import Path
 
-# Load .env from project root
-basedir = os.path.abspath(os.path.dirname(__file__))
-load_dotenv(os.path.join(basedir, '..', '.env'))
+from dotenv import load_dotenv, find_dotenv
+
+
+# Load .env if present (development); Render uses environment variables directly.
+load_dotenv(find_dotenv(), override=False)
+
+
+def _normalize_database_url(raw_url: str | None) -> str | None:
+    """
+    Ensure DATABASE_URL uses the SQLAlchemy psycopg3 driver.
+    Render supplies URLs in the form postgres://... which need to become
+    postgresql+psycopg://... for SQLAlchemy 2.x + psycopg 3.
+    """
+    if not raw_url:
+        return None
+
+    url = raw_url.strip()
+    if url.startswith("postgres://"):
+        url = "postgresql+psycopg://" + url[len("postgres://") :]
+    elif url.startswith("postgresql://") and "+psycopg" not in url:
+        url = "postgresql+psycopg://" + url[len("postgresql://") :]
+
+    return url
+
 
 class Config:
     # Flask config
-    SECRET_KEY = os.getenv("SECRET_KEY")
-    
+    SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
+
     # Database config
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
+    _default_sqlite_path = Path(__file__).resolve().parent.parent / "instance" / "ai_tutor.db"
+    SQLALCHEMY_DATABASE_URI = (
+        _normalize_database_url(os.getenv("DATABASE_URL"))
+        or f"sqlite:///{_default_sqlite_path}"
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # Connection pool management for Supabase
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_pre_ping": True,      # Automatically check if connections are still alive
-        "pool_recycle": 300,        # Recycle connections every 5 minutes
-        "pool_size": 5,             # Maintain up to 5 connections
-        "max_overflow": 10          # Allow 10 temporary extra connections if load spikes
-    }
+    if SQLALCHEMY_DATABASE_URI.startswith("sqlite"):
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+    else:
+        SQLALCHEMY_ENGINE_OPTIONS = {
+            "pool_pre_ping": True,
+            "pool_recycle": 300,
+            "pool_size": 5,
+            "max_overflow": 10,
+        }
 
     # JWT config
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or SECRET_KEY
