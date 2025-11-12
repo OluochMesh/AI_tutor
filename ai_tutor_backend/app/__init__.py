@@ -1,10 +1,17 @@
 from pathlib import Path
+import logging
 
 from flask import Flask, jsonify
 from flask_cors import CORS
 
 from .config import Config
 from .extension import db, migrate, jwt
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 
 def create_app(config_class=Config):
@@ -24,7 +31,7 @@ def create_app(config_class=Config):
     CORS(app, supports_credentials=True)
     
     # Import the models for migration to detect them
-    from app.models import User, Progress, Response, Subscription
+    from app.models import User, Progress, Response, Subscription, Payment
 
     # Register Blueprints
     from app.routes.auth import auth_bp

@@ -5,6 +5,10 @@ import requests
 import base64
 from datetime import datetime
 import json
+import logging
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 class MpesaService:
     def __init__(self):
@@ -32,10 +36,34 @@ class MpesaService:
         self.auth_url = f'{self.base_url}/oauth/v1/generate?grant_type=client_credentials'
         self.stk_push_url = f'{self.base_url}/mpesa/stkpush/v1/processrequest'
         self.stk_query_url = f'{self.base_url}/mpesa/stkpushquery/v1/query'
+        
+        # Validate configuration
+        self._validate_config()
+    
+    def _validate_config(self):
+        """Validate that required M-Pesa credentials are configured"""
+        missing = []
+        if not self.consumer_key:
+            missing.append('MPESA_CONSUMER_KEY')
+        if not self.consumer_secret:
+            missing.append('MPESA_CONSUMER_SECRET')
+        if not self.shortcode:
+            missing.append('MPESA_SHORTCODE')
+        if not self.passkey:
+            missing.append('MPESA_PASSKEY')
+        
+        if missing:
+            logger.warning(f"M-Pesa configuration incomplete. Missing: {', '.join(missing)}")
+        else:
+            logger.info(f"M-Pesa service initialized for {self.environment} environment")
     
     def get_access_token(self):
         """Get OAuth access token from Daraja API"""
         try:
+            if not self.consumer_key or not self.consumer_secret:
+                logger.error("M-Pesa credentials not configured")
+                return None
+            
             # Create basic auth string
             auth_string = f"{self.consumer_key}:{self.consumer_secret}"
             auth_bytes = auth_string.encode('utf-8')
@@ -45,14 +73,25 @@ class MpesaService:
                 'Authorization': f'Basic {auth_base64}'
             }
             
-            response = requests.get(self.auth_url, headers=headers)
+            logger.debug(f"Requesting access token from {self.auth_url}")
+            response = requests.get(self.auth_url, headers=headers, timeout=10)
             response.raise_for_status()
             
             result = response.json()
-            return result.get('access_token')
+            access_token = result.get('access_token')
             
+            if access_token:
+                logger.info("Successfully obtained M-Pesa access token")
+            else:
+                logger.error(f"Failed to get access token. Response: {result}")
+            
+            return access_token
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error getting M-Pesa access token: {str(e)}")
+            return None
         except Exception as e:
-            # Log error properly in production
+            logger.error(f"Error getting M-Pesa access token: {str(e)}", exc_info=True)
             return None
     
     def generate_password(self):
@@ -114,22 +153,36 @@ class MpesaService:
             
             result = response.json()
             
+            logger.info(f"STK Push response: {result}")
+            
             if result.get('ResponseCode') == '0':
+                checkout_request_id = result.get('CheckoutRequestID')
+                merchant_request_id = result.get('MerchantRequestID')
+                logger.info(f"STK Push initiated successfully. CheckoutRequestID: {checkout_request_id}")
                 return {
                     'success': True,
-                    'checkout_request_id': result.get('CheckoutRequestID'),
-                    'merchant_request_id': result.get('MerchantRequestID'),
+                    'checkout_request_id': checkout_request_id,
+                    'merchant_request_id': merchant_request_id,
                     'message': 'STK push sent successfully'
                 }
             else:
+                error_msg = result.get('ResponseDescription', 'STK push failed')
+                error_code = result.get('ResponseCode', 'Unknown')
+                logger.error(f"STK Push failed. Code: {error_code}, Description: {error_msg}")
                 return {
                     'success': False,
-                    'error': result.get('ResponseDescription', 'STK push failed')
+                    'error': error_msg,
+                    'error_code': error_code
                 }
                 
+        except requests.exceptions.Timeout:
+            logger.error("STK Push request timed out")
+            return {'success': False, 'error': 'Request timed out. Please try again.'}
         except requests.exceptions.RequestException as e:
+            logger.error(f"Network error during STK Push: {str(e)}")
             return {'success': False, 'error': f'Network error: {str(e)}'}
         except Exception as e:
+            logger.error(f"Unexpected error during STK Push: {str(e)}", exc_info=True)
             return {'success': False, 'error': f'STK push failed: {str(e)}'}
     
     def query_stk_status(self, checkout_request_id):
@@ -172,6 +225,8 @@ class MpesaService:
             
             result = response.json()
             
+            logger.debug(f"STK Query response: {result}")
+            
             # ResultCode meanings:
             # 0 = Success
             # 1032 = Request cancelled by user
@@ -179,27 +234,37 @@ class MpesaService:
             # Other = Failed
             
             result_code = result.get('ResultCode')
+            result_desc = result.get('ResultDesc', '')
             
             if result_code == '0':
                 status = 'COMPLETED'
+                logger.info(f"Payment completed for checkout_request_id: {checkout_request_id}")
             elif result_code == '1032':
                 status = 'CANCELLED'
+                logger.info(f"Payment cancelled by user for checkout_request_id: {checkout_request_id}")
             elif result_code == '1037':
                 status = 'TIMEOUT'
+                logger.warning(f"Payment request timed out for checkout_request_id: {checkout_request_id}")
             elif result_code is None:
                 status = 'PENDING'
+                logger.debug(f"Payment still pending for checkout_request_id: {checkout_request_id}")
             else:
                 status = 'FAILED'
+                logger.error(f"Payment failed. Code: {result_code}, Description: {result_desc}")
             
             return {
                 'success': True,
                 'status': status,
                 'result_code': result_code,
-                'result_desc': result.get('ResultDesc', ''),
+                'result_desc': result_desc,
                 'checkout_request_id': checkout_request_id
             }
             
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error querying STK status: {str(e)}")
+            return {'success': False, 'error': f'Network error: {str(e)}'}
         except Exception as e:
+            logger.error(f"Error querying STK status: {str(e)}", exc_info=True)
             return {'success': False, 'error': f'Query failed: {str(e)}'}
     
     def validate_phone_number(self, phone_number):

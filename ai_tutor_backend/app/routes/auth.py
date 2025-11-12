@@ -7,6 +7,23 @@ import re
 
 auth_bp = Blueprint('auth', __name__)
 
+
+def _set_user_session(user: User) -> None:
+    """
+    Persist the authenticated user in Flask's session so that server-rendered
+    routes can reliably determine login state.
+    """
+    session.clear()
+    session.permanent = True
+    session['user_id'] = user.id
+    session['user'] = {
+        'id': user.id,
+        'email': user.email,
+        'name': getattr(user, 'name', None),
+        'subscription_status': getattr(user, 'subscription_status', None)
+    }
+    session.modified = True
+
 # Helper function to validate email format
 def is_valid_email(email):
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -130,6 +147,8 @@ def login():
             expires_delta=timedelta(days=30)
         )
         
+        _set_user_session(user)
+
         return jsonify({
             'success': True,
             'message': 'Login successful',
@@ -250,15 +269,23 @@ def set_session():
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
-        # Store a small user object in session for frontend blueprint checks
-        session['user'] = {
-            'id': user.id,
-            'email': user.email,
-            'name': getattr(user, 'name', None)
-        }
+        _set_user_session(user)
         return jsonify({'success': True, 'message': 'Session set'}), 200
     except Exception as e:
         return jsonify({'error': f'Setting session failed: {str(e)}'}), 500
+
+
+@auth_bp.route('/logout', methods=['POST'])
+def logout():
+    """
+    Clear the Flask session so protected routes can no longer be accessed.
+    """
+    session.clear()
+    response = jsonify({'success': True, 'message': 'Logged out'})
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response, 200
 
 
 # Test endpoint (can be removed in production)

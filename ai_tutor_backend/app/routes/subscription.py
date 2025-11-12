@@ -2,11 +2,15 @@
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models import User, Subscription
+from app.models import User, Subscription, Payment
 from app.extension import db
 from datetime import datetime, timedelta
 from app.services.payment_service import MpesaService
 import os
+import logging
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 subscription_bp = Blueprint('subscription', __name__)
 
@@ -167,12 +171,30 @@ def initiate_mpesa_payment():
         )
         
         if result.get('success'):
-            # Store checkout_request_id for status checking
-            # You might want to create a Payment model to store this
+            # Create payment record
+            checkout_request_id = result.get('checkout_request_id')
+            merchant_request_id = result.get('merchant_request_id')
+            
+            payment = Payment(
+                user_id=user.id,
+                checkout_request_id=checkout_request_id,
+                merchant_request_id=merchant_request_id,
+                amount=amount,
+                phone_number=formatted_phone,
+                account_reference=account_reference,
+                transaction_desc=transaction_desc,
+                plan_type=plan,
+                status='pending'
+            )
+            db.session.add(payment)
+            db.session.commit()
+            
+            logger.info(f"Payment initiated for user {user.id}. CheckoutRequestID: {checkout_request_id}, Amount: {amount} KES")
             
             return jsonify({
                 'success': True,
-                'checkout_request_id': result.get('checkout_request_id'),
+                'checkout_request_id': checkout_request_id,
+                'payment_id': payment.id,
                 'message': 'M-Pesa payment request sent to your phone',
                 'amount': amount,
                 'phone_number': formatted_phone,
@@ -184,12 +206,15 @@ def initiate_mpesa_payment():
                 ]
             }), 200
         else:
+            logger.error(f"Failed to initiate payment for user {user.id}: {result.get('error')}")
             return jsonify({
                 'success': False,
                 'error': result.get('error', 'Payment initiation failed')
             }), 400
         
     except Exception as e:
+        db.session.rollback()
+        logger.error(f"Exception initiating payment for user {user.id}: {str(e)}", exc_info=True)
         return jsonify({'error': f'Failed to initiate payment: {str(e)}'}), 500
 
 
@@ -213,11 +238,55 @@ def check_payment_status():
         if not checkout_request_id:
             return jsonify({'error': 'checkout_request_id required'}), 400
 
-        # Query transaction status
+        # Find payment record
+        payment = Payment.query.filter_by(checkout_request_id=checkout_request_id, user_id=user.id).first()
+        
+        if not payment:
+            return jsonify({'error': 'Payment not found'}), 404
+        
+        # Query transaction status from M-Pesa
         result = mpesa.query_stk_status(checkout_request_id)
         
         if result.get('success'):
             status = result.get('status')
+            result_code = result.get('result_code')
+            result_desc = result.get('result_desc', '')
+            
+            # Update payment record status if changed
+            if status == 'COMPLETED' and payment.status != 'completed':
+                # Check if callback already processed this
+                if not payment.subscription_activated:
+                    # Manually trigger subscription activation if callback missed it
+                    payment.mark_completed(
+                        result_code=result_code,
+                        result_desc=result_desc
+                    )
+                    
+                    subscription = Subscription.query.filter_by(user_id=user.id).first()
+                    if not subscription:
+                        subscription = Subscription()
+                        subscription.user_id = user.id
+                        db.session.add(subscription)
+                    
+                    plan = payment.plan_type or 'monthly'
+                    duration_days = PRICING[plan]['duration_days']
+                    subscription.upgrade_to_premium(months=(duration_days // 30))
+                    user.subscription_status = 'premium'
+                    
+                    db.session.commit()
+                    logger.info(f"Payment completed via status check for user {user.id}")
+            elif status == 'CANCELLED' and payment.status != 'cancelled':
+                payment.mark_cancelled()
+                db.session.commit()
+            elif status == 'TIMEOUT' and payment.status != 'timeout':
+                payment.mark_timeout()
+                db.session.commit()
+            elif status == 'FAILED' and payment.status != 'failed':
+                payment.mark_failed(
+                    result_code=result_code,
+                    result_desc=result_desc
+                )
+                db.session.commit()
             
             return jsonify({
                 'success': True,
@@ -225,20 +294,24 @@ def check_payment_status():
                 'completed': status == 'COMPLETED',
                 'message': {
                     'PENDING': 'Payment pending. Please complete the M-Pesa prompt.',
-                    'COMPLETED': 'Payment successful! Activating subscription...',
+                    'COMPLETED': 'Payment successful! Subscription activated.',
                     'CANCELLED': 'Payment was cancelled.',
                     'TIMEOUT': 'Payment request timed out. Please try again.',
                     'FAILED': 'Payment failed. Please try again.'
                 }.get(status, 'Unknown status'),
-                'result_desc': result.get('result_desc', '')
+                'result_desc': result_desc,
+                'payment': payment.to_dict()
             }), 200
         else:
+            logger.error(f"Failed to query payment status: {result.get('error')}")
             return jsonify({
                 'success': False,
                 'error': result.get('error')
             }), 500
 
     except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error checking payment status: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -246,19 +319,48 @@ def check_payment_status():
 def mpesa_callback():
     """
     M-Pesa callback endpoint - receives payment notifications from Safaricom
-    
+    This endpoint is called by Safaricom's servers when payment status changes.
     """
     try:
         # Get callback data
         data = request.get_json()
         
-        # Log callback for debugging (would use proper logger in production)
+        logger.info(f"M-Pesa callback received: {data}")
+        
+        if not data:
+            logger.warning("Empty callback data received")
+            return jsonify({
+                'ResultCode': 1,
+                'ResultDesc': 'Invalid request'
+            }), 200
         
         # Extract callback data
         body = data.get('Body', {}).get('stkCallback', {})
+        if not body:
+            logger.warning(f"Invalid callback structure: {data}")
+            return jsonify({
+                'ResultCode': 1,
+                'ResultDesc': 'Invalid callback structure'
+            }), 200
+        
         result_code = body.get('ResultCode')
         checkout_request_id = body.get('CheckoutRequestID')
+        result_desc = body.get('ResultDesc', '')
         
+        logger.info(f"Callback for CheckoutRequestID: {checkout_request_id}, ResultCode: {result_code}")
+        
+        # Find payment record
+        payment = Payment.query.filter_by(checkout_request_id=checkout_request_id).first()
+        
+        if not payment:
+            logger.error(f"Payment not found for checkout_request_id: {checkout_request_id}")
+            # Still return success to Safaricom to avoid retries
+            return jsonify({
+                'ResultCode': 0,
+                'ResultDesc': 'Accepted'
+            }), 200
+        
+        # Handle different result codes
         if result_code == 0:
             # Payment successful
             callback_metadata = body.get('CallbackMetadata', {}).get('Item', [])
@@ -277,25 +379,74 @@ def mpesa_callback():
                 elif name == 'MpesaReceiptNumber':
                     mpesa_receipt = item.get('Value')
             
+            # Update payment record
+            payment.mark_completed(
+                mpesa_receipt_number=mpesa_receipt,
+                result_code=str(result_code),
+                result_desc=result_desc
+            )
+            
+            # Determine plan from amount
             if amount:
                 if amount >= 3600:
                     plan = 'yearly'
                 else:
                     plan = 'monthly'
+            else:
+                plan = payment.plan_type or 'monthly'
+            
+            # Activate subscription
+            user = User.query.get(payment.user_id)
+            if user:
+                subscription = Subscription.query.filter_by(user_id=user.id).first()
+                if not subscription:
+                    subscription = Subscription()
+                    subscription.user_id = user.id
+                    db.session.add(subscription)
                 
-                # Payment successful - would log properly in production
+                # Calculate duration
+                duration_days = PRICING[plan]['duration_days']
+                subscription.upgrade_to_premium(months=(duration_days // 30))
+                user.subscription_status = 'premium'
+                
+                db.session.commit()
+                
+                logger.info(f"Payment completed and subscription activated for user {user.id}. "
+                          f"Receipt: {mpesa_receipt}, Amount: {amount} KES, Plan: {plan}")
+            else:
+                logger.error(f"User {payment.user_id} not found for payment {payment.id}")
+                db.session.commit()
+        else:
+            # Payment failed, cancelled, or timed out
+            if result_code == 1032:
+                payment.mark_cancelled()
+                logger.info(f"Payment cancelled by user. CheckoutRequestID: {checkout_request_id}")
+            elif result_code == 1037:
+                payment.mark_timeout()
+                logger.warning(f"Payment request timed out. CheckoutRequestID: {checkout_request_id}")
+            else:
+                payment.mark_failed(
+                    result_code=str(result_code),
+                    result_desc=result_desc
+                )
+                logger.error(f"Payment failed. CheckoutRequestID: {checkout_request_id}, "
+                           f"ResultCode: {result_code}, Description: {result_desc}")
+            
+            db.session.commit()
         
-        # Always return success to Safaricom
+        # Always return success to Safaricom (to acknowledge receipt)
         return jsonify({
             'ResultCode': 0,
             'ResultDesc': 'Accepted'
         }), 200
         
     except Exception as e:
-        # Log error properly in production
+        logger.error(f"Error processing M-Pesa callback: {str(e)}", exc_info=True)
+        # Still return success to Safaricom to avoid retries
+        # But log the error for investigation
         return jsonify({
-            'ResultCode': 1,
-            'ResultDesc': 'Failed'
+            'ResultCode': 0,
+            'ResultDesc': 'Accepted'
         }), 200
 
 
